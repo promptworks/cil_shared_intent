@@ -55,7 +55,7 @@ module SharedIntent
     message = JSON.parse(payload) || {}
     responses = arrayify handle_message(delivery_info, metadata, message)
     responses = responses.map do |response|
-      logger.info responses: responses
+      logger.info responses: responses, class: self.class.name
       ensure_routing_maintained message, response
     end
     logger.info to_queue: responses
@@ -78,7 +78,7 @@ module SharedIntent
     end
     intent_keys = %w(intents data_types data)
     if not response.respond_to? :key?
-      fail "Response must be a routable intent hash with: #{intent_keys}"
+      fail "Response must be a routable intent hash with: #{intent_keys}, but was: #{response}"
     end
     response.keys.each do |key|
       response[key.to_s] = response.delete(key)
