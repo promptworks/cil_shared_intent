@@ -39,7 +39,10 @@ describe SharedIntent do
 
     it "attempts to register the routes via the intent router" do
       dbl = double("router_exchange")
-      expect(dbl).to receive(:publish).once.with({intents: "chime.testing", data_types: "chime.string", exchange: "TestSharedIntentsExchange" })
+      expect(dbl).to receive(:publish).once.with(
+        JSON.dump({"intents" => "chime.testing",
+          "data_types" => "chime.string",
+          "exchange" => "TestSharedIntentsExchange" }), routing_key: "add_route")
       allow(subject).to receive(:router_exchange).and_return dbl
       subject.register_routes
     end
@@ -95,15 +98,28 @@ describe SharedIntent do
     let(:hash_payload) { {"this" => "is the data", "routing" => {} } }
     let(:string_payload) { JSON.dump(hash_payload) }
 
-    it 'fails if handle_message is not defined' do
-      expect{subject._handle_message(nil, nil, nil)}.to raise_exception("You must define handle_message")
+    context "with a single return message" do
+      it 'fails if handle_message is not defined' do
+        expect{subject._handle_message(nil, nil, nil)}.to raise_exception("You must define handle_message")
+      end
+
+      it "parses the payload into a hash" do
+        expect(subject).to receive(:handle_message).
+                           with(delivery_info, metadata, hash_payload).
+                           and_return(routable_response)
+        response = subject._handle_message(delivery_info, metadata, string_payload)
+        expect(response.length).to eq 1
+      end
     end
 
-    it "parses the payload into a hash" do
-      expect(subject).to receive(:handle_message).
-                         with(delivery_info, metadata, hash_payload).
-                         and_return(routable_response)
-      response = subject._handle_message(delivery_info, metadata, string_payload)
+    context "when multiple responses are returned" do
+      it "parses each payload into a response" do
+        expect(subject).to receive(:handle_message).
+                           with(delivery_info, metadata, hash_payload).
+                           and_return([routable_response,routable_response])
+        response = subject._handle_message(delivery_info, metadata, string_payload)
+        expect(response.length).to eq 2
+      end
     end
   end
 end

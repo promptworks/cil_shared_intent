@@ -32,10 +32,9 @@ module SharedIntent
 
   def run
     subscribe_to_queue do |delivery_info, metadata, payload|
-      response = _handle_message(delivery_info, metadata, payload)
-      publish response
+      responses = _handle_message(delivery_info, metadata, payload)
+      responses.each { |response| publish response }
     end
-    subscribe_to_queue(&:_handle_message)
     register_routes
 
     loop do
@@ -50,15 +49,21 @@ module SharedIntent
     connection.close if @_connection
   end
 
-
   def _handle_message(delivery_info, metadata, payload)
     logger.info from_queue: payload
     fail "You must define handle_message" unless respond_to? :handle_message
     message = JSON.parse(payload) || {}
-    response = handle_message(delivery_info, metadata, message)
-    response = ensure_routing_maintained message, response
-    logger.info to_queue: response
-    response
+    responses = arrayify handle_message(delivery_info, metadata, message)
+    responses = responses.map do |response|
+      logger.info responses: responses
+      ensure_routing_maintained message, response
+    end
+    logger.info to_queue: responses
+    responses
+  end
+
+  def arrayify(input)
+    input.respond_to?(:key?) ? [input] : Array(input)
   end
 
   def ensure_routing_maintained(message, response)
@@ -71,12 +76,12 @@ module SharedIntent
       logger.error "No response provided"
       fail "No response provided"
     end
-    response.keys.each do |key|
-      response[key.to_s] = response.delete(key)
-    end
     intent_keys = %w(intents data_types data)
     if not response.respond_to? :key?
       fail "Response must be a routable intent hash with: #{intent_keys}"
+    end
+    response.keys.each do |key|
+      response[key.to_s] = response.delete(key)
     end
     unless (response.keys & intent_keys).length == intent_keys.length
       fail "Response must be a routable intent hash. Missing: #{intent_keys - response.keys}"
