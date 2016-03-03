@@ -45,14 +45,17 @@ module SharedIntent
     exit
   end
 
-  def kill
-    connection.close if @_connection
+  def subscribe_to_queue(&block)
+    queue.subscribe do |delivery_info, metadata, payload|
+      block.call(delivery_info, metadata, payload)
+    end
   end
 
   def _handle_message(delivery_info, metadata, payload)
     logger.info from_queue: payload
     fail "You must define handle_message" unless respond_to? :handle_message
     message = JSON.parse(payload) || {}
+    assert_routing_validity(message)
     responses = arrayify handle_message(delivery_info, metadata, message)
     responses = responses.map do |response|
       logger.info responses: responses, class: self.class.name
@@ -64,6 +67,12 @@ module SharedIntent
 
   def arrayify(input)
     input.respond_to?(:key?) ? [input] : Array(input)
+  end
+
+  def assert_routing_validity(payload)
+    fail ArgumentError, "Payload missing routing #{payload}" unless payload.key?("routing")
+    fail ArgumentError, "Payload missing convo id" unless payload.fetch("routing", {}).fetch("conversation", {}).key?("id")
+    fail ArgumentError, "Payload missing user id" unless payload.fetch("routing", {}).fetch("user", {}).key?("id")
   end
 
   def ensure_routing_maintained(message, response)
@@ -85,12 +94,6 @@ module SharedIntent
     end
     unless (response.keys & intent_keys).length == intent_keys.length
       fail "Response must be a routable intent hash. Missing: #{intent_keys - response.keys}"
-    end
-  end
-
-  def subscribe_to_queue(&block)
-    queue.subscribe do |delivery_info, metadata, payload|
-      block.call(delivery_info, metadata, payload)
     end
   end
 
@@ -157,6 +160,10 @@ module SharedIntent
     logger.info queue: self.class.queue_name
     @_queue.bind(exchange)
     @_queue
+  end
+
+  def kill
+    connection.close if @_connection
   end
 
   def logger

@@ -10,13 +10,23 @@ describe SharedIntent do
     register_route intents: "chime.testing", data_types: "chime.string"
   end
 
+  let(:valid_routing) do
+    {
+      "routing"=> {
+        "user" => { "id" => 123 },
+        "conversation" => { "id" => 123 }
+      }
+    }
+  end
+
   let(:routable_response) do
     {
       "intents" => "chime.ActionIntent",
       "data_types" => "chime.string",
       "data" => "This is a response"
-    }
+    }.merge(valid_routing)
   end
+
   subject { TestSharedIntents.new }
 
   describe "when included" do
@@ -72,7 +82,7 @@ describe SharedIntent do
       let(:response) { "blah blah" }
       it "fails" do
         expect{subject.ensure_routing_maintained(message, response)}.
-         to raise_exception('Response must be a routable intent hash with: ["intents", "data_types", "data"]')
+         to raise_exception(/Response must be a routable intent hash with/)
       end
     end
 
@@ -95,7 +105,7 @@ describe SharedIntent do
   describe "_handle_message" do
     let(:delivery_info) { "delivery_info" }
     let(:metadata) { "metadata" }
-    let(:hash_payload) { {"this" => "is the data", "routing" => {} } }
+    let(:hash_payload) { {"this" => "is the data" }.merge(valid_routing) }
     let(:string_payload) { JSON.dump(hash_payload) }
 
     context "with a single return message" do
@@ -122,4 +132,47 @@ describe SharedIntent do
       end
     end
   end
+
+  describe "ensure routing exists and is in the accepted format" do
+    it "fails with an ArgumentError when routing is missing" do
+      payload = {}
+      expect{subject.assert_routing_validity(payload)}.to \
+        raise_exception(ArgumentError, "Payload missing routing {}")
+    end
+
+    it 'fails w/ ArgumentError when conversation id is missing' do
+      payload = {
+        "routing" => {
+          "user" => {
+            "id" => 123
+          }
+        }
+      }
+      expect{subject.assert_routing_validity(payload)}.to \
+        raise_exception(ArgumentError, "Payload missing convo id")
+    end
+
+    it 'when user id is missing' do
+      payload = {
+        "routing" => {
+          "conversation" => {
+            "id" => 123
+          }
+        }
+      }
+      expect{subject.assert_routing_validity(payload)}.to \
+        raise_exception(ArgumentError, "Payload missing user id")
+    end
+
+    it 'when routing is populated' do
+      payload = {
+        "routing" => {
+          "user" => {"id" => 123 },
+          "conversation" => {"id" => 123 }
+        }
+      }
+      expect(subject.assert_routing_validity(payload)).to be_nil
+    end
+  end
+
 end
