@@ -107,9 +107,13 @@ module SharedIntent
   end
 
   def register_routes
-    self.class.routes.each do |route|
-      router_exchange.publish(JSON.dump(route.merge(exchange: self.class.exchange_name)), routing_key: "add_route")
-    end
+    self.class.routes.each { |route| register_route(route) }
+  end
+
+  def register_route(route)
+    router_exchange.publish(
+      JSON.dump(route.merge(exchange: self.class.exchange_name)),
+      routing_key: "add_route")
   end
 
   def connection
